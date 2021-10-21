@@ -1,0 +1,20 @@
+---
+#See https://huggingface.co/transformers/pretrained_models.html
+model_type: "bert-base-uncased"
+
+experiment_location: "/Shared/transformer_experiments/classification_experiments"
+
+parquet_base_dir: "dbfs:/data/transformers"
+test_table_name: "parquet_table_test"
+train_table_name: "parquet_table_train"
+feature_col: "title_text"
+label_col: "label"
+num_labels: 2
+
+max_token_length: 200
+batch_size: 24
+num_training_epochs: 3
+eval_steps: 20
+save_total_limit: 10
+metric_for_best_model: 'f1'
+seed: 123
