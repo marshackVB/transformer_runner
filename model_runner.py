@@ -31,7 +31,7 @@ from helpers import get_config, get_parquet_files, get_or_create_experiment, get
 
 # COMMAND ----------
 
-dbutils.widgets.text("config_file", '')
+dbutils.widgets.text("config_file", 'config.yaml')
 config_file = dbutils.widgets.get("config_file")
 
 config = get_config(config_file)
