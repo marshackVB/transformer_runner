@@ -1,41 +1,40 @@
 # Databricks notebook source
-# MAGIC %md ### Transformer models training notebooks 
+# MAGIC %md ## Transformer models training notebook
 
 # COMMAND ----------
 
-# MAGIC %pip install -r requirements.txt
+# MAGIC %md Install dependecies
+
+# COMMAND ----------
+
+# MAGIC %pip install -q -r requirements.txt
 
 # COMMAND ----------
 
 import math
 import yaml
+from functools import partial
 import numpy as np
 import torch
 from torch.utils.data import IterableDataset
-from datasets import load_dataset
+from datasets import load_dataset, DatasetDict
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
 from pyspark.sql.functions import col
 from sklearn.metrics import precision_recall_fscore_support
 import mlflow
 from custom_classes import TransformerIterableDataset, TransformerModel
+from helpers import get_config, get_parquet_files, get_or_create_experiment, get_best_metric
 
 # COMMAND ----------
 
-dbutils.widgets.text("config_file_name", '')
-config_file_name = dbutils.widgets.get("config_file_name")
+# MAGIC %md Import yaml configs
 
 # COMMAND ----------
 
-stream = open(config_file_name, 'r')
-config_dict = yaml.load(stream, yaml.SafeLoader)
+dbutils.widgets.text("config_file", '')
+config_file = dbutils.widgets.get("config_file")
 
-for parameter, value in config_dict.items():
-  print("{0:30} {1}".format(parameter, value))
-
-class dotdict(dict):
-    __getattr__ = dict.get
-
-config = dotdict(config_dict)
+config = get_config(config_file)
 
 # COMMAND ----------
 
@@ -43,7 +42,7 @@ config = dotdict(config_dict)
 
 # COMMAND ----------
 
-mlflow.set_experiment(config.experiment_location)
+get_or_create_experiment(config.experiment_location)
 
 # COMMAND ----------
 
@@ -51,26 +50,8 @@ mlflow.set_experiment(config.experiment_location)
 
 # COMMAND ----------
 
-parquet_base_dir_py = f"/{config.parquet_base_dir.replace(':', '')}"
-
-train_files = [file.path for file in dbutils.fs.ls(f'{config.parquet_base_dir}{config.train_table_name}') if file.path[-8:] == '.parquet']
-train_files = [file.replace(config.parquet_base_dir, parquet_base_dir_py) for file in train_files]
- 
-test_files = [file.path for file in dbutils.fs.ls(f'{config.parquet_base_dir}{config.test_table_name}') if file.path[-8:] == '.parquet']
-test_files = [file.replace(config.parquet_base_dir, parquet_base_dir_py) for file in test_files]
-
-# COMMAND ----------
-
-# MAGIC %md Configure max_steps based requested epochs and other information
-
-# COMMAND ----------
-
-training_records = spark.read.parquet(f'{config.parquet_base_dir}{config.train_table_name}').count()
-
-num_gpus = torch.cuda.device_count()
-gradient_accumulation_steps = 1
-effective_batch_size = config.batch_size * gradient_accumulation_steps * num_gpus
-max_steps = math.floor(config.num_training_epochs * training_records / effective_batch_size)
+train_files = get_parquet_files(config.database_name, config.train_table_name)
+test_files = get_parquet_files(config.database_name, config.test_table_name)
 
 # COMMAND ----------
 
@@ -78,36 +59,81 @@ max_steps = math.floor(config.num_training_epochs * training_records / effective
 
 # COMMAND ----------
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 tokenizer = AutoTokenizer.from_pretrained(config.model_type)
-model = AutoModelForSequenceClassification.from_pretrained(config.model_type, num_labels=config.num_labels)
+model = AutoModelForSequenceClassification.from_pretrained(config.model_type, num_labels=config.num_labels).to(device)
 
 # COMMAND ----------
 
-# MAGIC %md Create streaming datasets
+# MAGIC %md Configure batch or streaming datasets
 
 # COMMAND ----------
 
-stream_train = load_dataset("parquet", 
-                            data_files=train_files, 
-                            split='train', 
+if config.streaming_read:
+  
+  # Determine max steps
+  training_records = spark.table(f'{config.database_name}.{config.train_table_name}').count()
+
+  parrallelism = 1 if device.type == 'cpu' else torch.cuda.device_count()
+  gradient_accumulation_steps = 1
+  
+  effective_batch_size = config.batch_size * gradient_accumulation_steps * parrallelism
+  max_steps = math.floor(config.num_train_epochs * training_records / effective_batch_size)
+  
+  # Since streaming datasets require a "steps" based evaluation strategy, 
+  # calculate the eval steps required such that evaluation happens once
+  # per epoch.
+  eval_steps_for_epoch = max_steps / config.num_train_epochs
+  
+  
+  load_train = load_dataset("parquet", 
+                             data_files=train_files, 
+                             split='train',
+                             streaming=True)
+
+  load_test = load_dataset("parquet", 
+                            data_files=test_files, 
+                            split='train',
                             streaming=True)
 
-stream_test = load_dataset("parquet", 
-                           data_files=test_files, 
-                           split='train', 
-                           streaming=True)
+  train = TransformerIterableDataset(load_train, 
+                                     tokenizer, 
+                                     config.feature_col, 
+                                     config.label_col, 
+                                     config.max_token_length)
 
-train = TransformerIterableDataset(stream_train, 
-                                   tokenizer, 
-                                   config.feature_col, 
-                                   config.label_col, 
-                                   config.max_token_length)
+  test = TransformerIterableDataset(load_test, 
+                                    tokenizer, 
+                                    config.feature_col, 
+                                    config.label_col, 
+                                    config.max_token_length)
+  
+  train_test = DatasetDict({'train': train,
+                            'test': test})
+  
+else:
+    
+  train = load_dataset("parquet", 
+                        data_files=train_files,
+                        split='train')
 
-test = TransformerIterableDataset(stream_test, 
-                                  tokenizer, 
-                                  config.feature_col, 
-                                  config.label_col, 
-                                  config.max_token_length)
+  test = load_dataset("parquet", 
+                       data_files=test_files,
+                       split='train')
+  
+  train_test = DatasetDict({'train': train,
+                            'test': test})
+  
+  def tokenize(batch, feature_col=config.feature_col):
+    return tokenizer(batch[feature_col], 
+                     padding='max_length', 
+                     truncation=True, 
+                     max_length=config.max_length)
+  
+  train_test = train_test.map(tokenize, batched=True, batch_size=config.batch_size) 
+  
+  train_test.set_format("torch", columns=['input_ids', 'attention_mask', 'label'])
 
 # COMMAND ----------
 
@@ -125,65 +151,91 @@ def compute_metrics(pred):
         'recall': recall
             }
 
+# Batch configuration
+training_params =   {"output_dir": '/Users/marshall.carter/Documents/huggingface/results',
+                     "overwrite_output_dir":       True,
+                     "per_device_train_batch_size": config.batch_size,
+                     "per_device_eval_batch_size":  config.batch_size,
+                     "weight_decay":                0.01,
+                     "num_train_epochs":            config.num_train_epochs,
+                     "save_strategy":               "epoch", 
+                     "evaluation_strategy":         "epoch",
+                     
+                     # When set to True, the parameters save_strategy needs to be the same as eval_strategy, 
+                     # and in the case it is “steps”, save_steps must be a round multiple of eval_steps
+                     
+                     "load_best_model_at_end":      True,
+                     "save_total_limit":            config.save_total_limit,
+                     "metric_for_best_model":       config.metric_for_best_model,
+                     "greater_is_better":           True,
+                     "seed":                        config.seed,
+                     "report_to":                   'none'
+                    }
 
-training_args = TrainingArguments(output_dir =                '/huggingface/results',
-                                  overwrite_output_dir =       True,
-                                  per_device_train_batch_size= config.batch_size,
-                                  per_device_eval_batch_size=  config.batch_size,
-                                  weight_decay=                0.01,
-                                  max_steps =                  max_steps,
-                                  save_strategy =              "steps", # The default
-                                  evaluation_strategy =        "steps",
-                                  #save_steps = 10, # Default is 500
-                                  eval_steps =                 config.eval_steps,
-                                  save_total_limit =           config.save_total_limit,
-                                  load_best_model_at_end=      True,
-                                  metric_for_best_model =      config.metric_for_best_model,
-                                  greater_is_better =          True,
-                                  seed=                        config.seed)
 
-def get_trainer(model=model, args=training_args, train_dataset=train, eval_dataset=test, compute_metrics=compute_metrics):
+# Adjusted for streaming
+if config.streaming_read:
+  # max_steps overrides num_training_epochs
+  training_params['max_steps'] =                     max_steps
   
-  trainer = Trainer(model=model,
-                    args=training_args,
-                    train_dataset=train,
-                    eval_dataset=test,
-                    compute_metrics=compute_metrics)
-  return trainer
+  # Evaluation is done (and logged) every eval_steps
+  training_params['evaluation_strategy'] =           "steps"
+  training_params['save_strategy'] =                 "steps"
+  training_params['load_best_model_at_end'] =        True
+  training_params['eval_steps'] =                    eval_steps_for_epoch
+  
+  
+training_args = TrainingArguments(**training_params)
 
-trainer = get_trainer()
+trainer = Trainer(model=model,
+                  args=training_args,
+                  train_dataset=train_test['train'],
+                  eval_dataset=train_test['test'],
+                  compute_metrics=compute_metrics)
 
 # COMMAND ----------
 
-# MAGIC %md Train the model and log tokenizer and fitted model to MLflow
+# MAGIC %md Train the model. Log tokenizer and fitted model to MLflow. Log a custom PythonModel for inference in an MLflow sub-run
 
 # COMMAND ----------
 
-trainer.train()
-
-trainer.save_model('/test_model')
-tokenizer.save_pretrained('/test_tokenizer')
+with mlflow.start_run(run_name=config.model_type) as run:
   
-mlflow.log_artifacts('/test_tokenizer', artifact_path='tokenizer')
-mlflow.log_artifacts('/test_model', artifact_path='model')
+  # Train model
+  trainer.train()
   
-results = trainer.evaluate()
-
-trainer.save_model('/test_model')
-tokenizer.save_pretrained('/test_tokenizer')
+  # Log metrics
+  get_metric = partial(get_best_metric, trainer.state.log_history)
   
-mlflow.log_artifacts('/test_tokenizer', artifact_path='tokenizer')
-mlflow.log_artifacts('/test_model', artifact_path='model')
-mlflow.log_artifact('config.yaml', artifact_path='config')
+  metrics_to_log = ['eval_f1', 'eval_precision', 'eval_recall', 'train_runtime', 'eval_runtime',
+                   'eval_loss', 'train_loss']
   
-results = trainer.evaluate()
+  for metric in metrics_to_log:
+    mlflow.log_metric(*get_metric(metric))
+    
+  # Log parameters
+  params = {"eval_batch_size":        trainer.args.eval_batch_size,
+            "train_batch_size":       trainer.args.train_batch_size,
+            "gpus":                   trainer.args._n_gpu,
+            "epochs":                 trainer.args.num_train_epochs,
+            "metric_for_best_model":  trainer.args.metric_for_best_model,
+            "best_checkpoint":        trainer.state.best_model_checkpoint.split('/')[-1],
+            "streaming_read":         config.streaming_read}
+    
+  mlflow.log_params(params)
+                  
+  # Log artifacts
+  trainer.save_model('/test_model')
+  tokenizer.save_pretrained('/test_tokenizer')
 
-# Create a sub-run / child run that logs the custom inference class to MLflow
-with mlflow.start_run(run_name = "model", nested=True) as child_run:
-  
-    transformer_model = TransformerModel(tokenizer = '/test_tokenizer', model = '/test_model')
-    mlflow.pyfunc.log_model("model", python_model=transformer_model)
+  mlflow.log_artifacts('/test_tokenizer', artifact_path='tokenizer')
+  mlflow.log_artifacts('/test_model', artifact_path='model')
+  mlflow.log_artifact('config.yaml', artifact_path='config')
 
-# COMMAND ----------
+  # Create a sub-run / child run that logs the custom inference class to MLflow
+  with mlflow.start_run(run_name = "python_model", nested=True) as child_run:
 
-mlflow.end_run()
+      transformer_model = TransformerModel(tokenizer = '/test_tokenizer', model = '/test_model')
+      mlflow.pyfunc.log_model("model", python_model=transformer_model)
+
+  mlflow.end_run()

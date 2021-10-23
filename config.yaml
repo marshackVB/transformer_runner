@@ -1,20 +1,26 @@
 ---
-#See https://huggingface.co/transformers/pretrained_models.html
-model_type: "bert-base-uncased"
+# See https://huggingface.co/transformers/pretrained_models.html for a list of available models
+# Most of the below parameters are explained in the docs here, https://huggingface.co/transformers/main_classes/trainer.html#trainingarguments
+
+model_type: "distilbert-base-uncased"
 
 experiment_location: "/Shared/transformer_experiments/classification_experiments"
 
-parquet_base_dir: "dbfs:/data/transformers"
-test_table_name: "parquet_table_test"
-train_table_name: "parquet_table_train"
+#parquet_base_dir: "dbfs:/user/hive/warehouse/"
+database_name: "default"
+train_table_name: "fake_news_parquet_small_train"
+test_table_name: "fake_news_parquet_small_test"
 feature_col: "title_text"
 label_col: "label"
 num_labels: 2
 
-max_token_length: 200
-batch_size: 24
-num_training_epochs: 3
-eval_steps: 20
+streaming_read: True
+
+max_token_length: 100
+batch_size: 16
+num_train_epochs: 1
+
 save_total_limit: 10
 metric_for_best_model: 'f1'
 seed: 123
+
