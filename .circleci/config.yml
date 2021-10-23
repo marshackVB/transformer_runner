@@ -7,10 +7,12 @@ jobs:
     steps:
       - checkout
       - python/install-packages:
-          pkg-manager: pip install databricks-cli
+          pkg-manager: pip
       - run:
           name: Pull changes to Repo
-          command: databricks repos update --path /Repos/marshall.carter@databricks.com/transformers --branch master
+          command: |
+            pip install databricks-cli
+            databricks repos update --path /Repos/marshall.carter@databricks.com/transformers --branch master
 
 workflows:
   main: 
