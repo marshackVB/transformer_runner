@@ -32,7 +32,7 @@ def get_config(config_file:str) -> Namespace:
   return config
 
 
-def get_parquet_files(database:str, table_name:str) -> List(str):
+def get_parquet_files(database:str, table_name:str) -> List[str]:
   """
   Given a database and name of a parquet table, return a list of 
   parquet files paths and names that can be read by the transfomers
@@ -55,7 +55,7 @@ def get_parquet_files(database:str, table_name:str) -> List(str):
   return files
 
 
-def get_best_metric(model_state:List(Dict(str, float)), metric:str, n_decimals:int = 4) -> Tuple(str, float):
+def get_best_metric(model_state:List[Dict[str, float]], metric:str, n_decimals:int = 4) -> Tuple[str, float]:
   """
   Given a metric name, return its value from the best model.
 
