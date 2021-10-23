@@ -1,1 +1,1 @@
-# Rapid NLP classification with Databricks and Transformers
+# Rapid NLP development with Databricks and Transformers
