@@ -25,7 +25,7 @@ The Repo can read the tables' underlying parquet files directly, either as a str
 
 2. Create a new Repo in your Databricks Workspace and clone this repository into the Repo.  
 
-3. Provision a single-node cluster, preferably using a GPU instance type for much better performance.  
+3. Provision a single-node cluster, preferably using a GPU instance type for much better performance. This project was most recently tested with [runtime version 9.0 ML](https://docs.databricks.com/release-notes/runtime/9.0.html)  
 
 4. Edit the config.yaml file to your specification. 
     - Change the database, table, and column name variables to your versions.  
