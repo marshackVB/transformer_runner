@@ -16,7 +16,7 @@ num_labels: 2
 
 streaming_read: True
 
-max_token_length: 100
+max_token_length: 10
 batch_size: 16
 num_train_epochs: 1
 
