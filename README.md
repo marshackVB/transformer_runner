@@ -1,8 +1,8 @@
-# Rapid NLP development with Databricks and Transformers
+# Rapid NLP development with Databricks, Delta, and Transformers
 
-This Databricks [Repo](https://docs.databricks.com/repos.html) provides a ready-to-use workflow for applying a broad array of [pre-trained transformers](https://huggingface.co/transformers/pretrained_models.html) for text classification tasks on parquet tables in  your Delta Lake.  
+This Databricks [Repo](https://docs.databricks.com/repos.html) provides a ready-to-use workflow for applying a broad array of [pre-trained transformers](https://huggingface.co/transformers/pretrained_models.html) for text classification tasks on Delta tables in your Delta Lake.  
 
-Only a Databricks Workspace, and two paquet tables - one for training, the other for testing, are required. The parquet tables should consist of one text column (the feature) and one label column (the values to predict).
+Only a Databricks Workspace, and two Delta tables - one for training, the other for testing, are required. The Delta tables should consist of one text column (the feature) and one label column (the values to predict).
 
 If you already have a Delta table ready to go, it's easy to generate the above dependencies using the below code (replacing the database and table names to your versions). The column you're predicting should be an integer type and start at value 0.
 
@@ -13,8 +13,8 @@ df = (spark.table('default.text_classification_table')
 
 train, test = df.randomSplit([0.7, 0.3], seed=12345)
 
-train.write.mode('overwrite').format('parquet').saveAsTable('default.train_parquet')
-test.write.mode('overwrite').format('parquet').saveAsTable('default.test_parquet')
+train.write.mode('overwrite').format('delta').saveAsTable('default.train')
+test.write.mode('overwrite').format('delta').saveAsTable('default.test')
 ```
 
 The Repo can read the tables' underlying parquet files directly, either as a stream using pytorchs' [IterableDataset](https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset) or using the traditional [map-style dataset](https://pytorch.org/docs/stable/data.html#map-style-datasets).  
@@ -25,7 +25,7 @@ The Repo can read the tables' underlying parquet files directly, either as a str
 
 2. Create a new Repo in your Databricks Workspace and clone this repository into the Repo.  
 
-3. Provision a single-node cluster, preferable using a GPU instance type for much better performance.  
+3. Provision a single-node cluster, preferably using a GPU instance type for much better performance.  
 
 4. Edit the config.yaml file to your specification. 
     - Change the database, table, and column name variables to your versions.  
@@ -44,7 +44,14 @@ Each time you run the model_runner notebook, a new entry will be logged to the t
 
 ## Performing inference  
 
+After you have found a performant model, you can log that model version in the Model Registry. The inference notebook provides an easy workflow for loading a model from the registry and apply it's predict method to another Delta table.
 
+The inference notebook accepts the following parameters.
+ - **model_name**: The name of the registered model.
+ - **stage**: The model's stage in the registry, such as 'Production'.
+ - **input_df**: The Delta table on which to apply the model (expects 'database.table_name').
+ - **feature_col**: The name of the text column that will be input to the model.
+ - **output_df**: The Delta table where results will be writen (expects 'database.table_name').
 
 
 
