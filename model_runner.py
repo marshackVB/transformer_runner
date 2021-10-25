@@ -14,6 +14,7 @@
 import math
 import yaml
 from functools import partial
+from sys import version_info
 import numpy as np
 import torch
 from torch.utils.data import IterableDataset
@@ -22,6 +23,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trai
 from pyspark.sql.functions import col
 from sklearn.metrics import precision_recall_fscore_support
 import mlflow
+from mlflow.types import ColSpec, DataType, Schema
 from custom_classes import TransformerIterableDataset, TransformerModel
 from helpers import get_config, get_parquet_files, get_or_create_experiment, get_best_metric
 
@@ -213,6 +215,9 @@ with mlflow.start_run(run_name=config.model_type) as run:
   for metric in metrics_to_log:
     mlflow.log_metric(*get_metric(metric))
     
+  python_version = "{major}.{minor}.{micro}".format(major=version_info.major,
+                                                    minor=version_info.minor,
+                                                    micro=version_info.micro)
   # Log parameters
   params = {"eval_batch_size":        trainer.args.eval_batch_size,
             "train_batch_size":       trainer.args.train_batch_size,
@@ -220,7 +225,9 @@ with mlflow.start_run(run_name=config.model_type) as run:
             "epochs":                 trainer.args.num_train_epochs,
             "metric_for_best_model":  trainer.args.metric_for_best_model,
             "best_checkpoint":        trainer.state.best_model_checkpoint.split('/')[-1],
-            "streaming_read":         config.streaming_read}
+            "streaming_read":         config.streaming_read,
+            "runtime_version":        spark.conf.get("spark.databricks.clusterUsageTags.sparkVersion"),
+            "python_version":         python_version}
     
   mlflow.log_params(params)
                   
@@ -235,7 +242,26 @@ with mlflow.start_run(run_name=config.model_type) as run:
   # Create a sub-run / child run that logs the custom inference class to MLflow
   with mlflow.start_run(run_name = "python_model", nested=True) as child_run:
 
+      # Create custom model
       transformer_model = TransformerModel(tokenizer = '/test_tokenizer', model = '/test_model')
-      mlflow.pyfunc.log_model("model", python_model=transformer_model)
+      
+      # Create conda environment
+      with open('requirements.txt', 'r') as additional_requirements:
+        libraries = additional_requirements.readlines()
+        libraries = [library.rstrip() for library in libraries]
+
+      model_env = mlflow.pyfunc.get_default_conda_env()
+      model_env['dependencies'][-1]['pip'] += libraries
+      
+      # Create model input and output schemas
+      input_schema = Schema([ColSpec(name=config.feature_col,  type= DataType.string)])
+
+      output_schema = Schema([ColSpec(name=config.feature_col, type= DataType.string),
+                              ColSpec(name='prediction',       type= DataType.double)])
+
+      signature = mlflow.models.ModelSignature(input_schema, output_schema)
+      
+      # Log custom model, signature, and conda environment
+      mlflow.pyfunc.log_model("model", python_model=transformer_model, signature=signature, conda_env=model_env)
 
   mlflow.end_run()

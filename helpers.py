@@ -4,9 +4,12 @@ from typing import List, Tuple, Dict
 from pyspark.sql import SparkSession
 from pyspark.dbutils import DBUtils
 import mlflow
+from mlflow.tracking import MlflowClient
 
 spark = SparkSession.builder.getOrCreate()
 dbutils = DBUtils(spark)
+
+client = MlflowClient()
 
 
 def get_config(config_file:str) -> Namespace:
@@ -91,3 +94,22 @@ def get_or_create_experiment(experiment_location: str) -> None:
     mlflow.create_experiment(experiment_location)
     
   mlflow.set_experiment(experiment_location)
+  
+  
+def get_run_id(model_name:str, stage:str='Production') -> str:
+  """Given a model's name, return its run id from the Model Registry; this assumes the model
+  has been registered
+  
+  Args:
+    model_name: The name of the model; this is the name used to registr the model.
+    stage: The stage (version) of the model in the registr you want returned
+    
+  Returns:
+    The run id of the model; this can be used to load the model for inference
+  
+  """
+  
+  prod_run = [run for run in client.search_model_versions(f"name='{model_name}'") 
+                  if run.current_stage == stage][0]
+  
+  return prod_run.run_id
