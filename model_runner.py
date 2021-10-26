@@ -38,6 +38,8 @@ config_file = dbutils.widgets.get("config_file")
 
 config = get_config(config_file)
 
+config.max_token_length = None if config.max_token_length == -1 else config.max_token_length
+
 # COMMAND ----------
 
 # MAGIC %md Configure MLflow tracking servier location
@@ -185,6 +187,8 @@ if config.streaming_read:
   training_params['save_strategy'] =                 "steps"
   training_params['load_best_model_at_end'] =        True
   training_params['eval_steps'] =                    eval_steps_for_epoch
+  training_params['save_steps'] =                    eval_steps_for_epoch
+  
   
   
 training_args = TrainingArguments(**training_params)
@@ -210,7 +214,7 @@ with mlflow.start_run(run_name=config.model_type) as run:
   get_metric = partial(get_best_metric, trainer.state.log_history)
   
   metrics_to_log = ['eval_f1', 'eval_precision', 'eval_recall', 'train_runtime', 'eval_runtime',
-                   'eval_loss', 'train_loss']
+                    'eval_loss', 'train_loss']
   
   for metric in metrics_to_log:
     mlflow.log_metric(*get_metric(metric))

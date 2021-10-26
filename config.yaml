@@ -6,7 +6,6 @@ model_type: "distilbert-base-uncased"
 
 experiment_location: "/Shared/transformer_experiments/classification_experiments"
 
-#parquet_base_dir: "dbfs:/user/hive/warehouse/"
 database_name: "default"
 train_table_name: "fake_news_parquet_small_train"
 test_table_name: "fake_news_parquet_small_test"
@@ -16,8 +15,9 @@ num_labels: 2
 
 streaming_read: True
 
-max_token_length: 10
-batch_size: 16
+# If set to -1, truncation will default to the model's maximum length.
+max_token_length: 100 
+batch_size: 32
 num_train_epochs: 1
 
 save_total_limit: 10
