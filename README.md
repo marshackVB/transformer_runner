@@ -2,7 +2,7 @@
 
 This Databricks [Repo](https://docs.databricks.com/repos.html) provides a ready-to-use workflow for applying a broad array of [pre-trained transformers](https://huggingface.co/transformers/pretrained_models.html) for text classification tasks on Delta tables in your Delta Lake.  
 
-Only a Databricks Workspace, and two Delta tables - one for training, the other for testing, are required. The Delta tables should consist of one text column (the feature) and one label column (the values to predict).
+Only a Databricks Workspace, and two Delta tables - one for training, the other for testing, are required. The Delta tables should consist of one text column (the feature) and one label column (the values to predict). All model results are automatically logged to an [MLflow Tracking Server](https://www.mlflow.org/docs/latest/tracking.html).
 
 If you already have a Delta table ready to go, it's easy to generate the above dependencies using the below code (replacing the database and table names to your versions). The column you're predicting should be an integer type and start at value 0.
 
@@ -28,6 +28,9 @@ The Repo can read the tables' underlying parquet files directly, either as a str
 3. Provision a single-node cluster, preferably using a GPU instance type for much better performance. This project was most recently tested with [runtime version 9.0 ML](https://docs.databricks.com/release-notes/runtime/9.0.html)  
 
 4. Edit the config.yaml file to your specification. 
+
+    - Notice that the [pre-trained models](https://huggingface.co/transformers/pretrained_models.html) from the Transformers library vary widely in their size (number of parameters). It may be best to start with a sparser model, such as **distilbert-base-uncased** before moving on to larger models. You can easly compare the performance of smaller and larger models via your MLflow Tracking Server.
+
     - Change the database, table, and column name variables to your versions.  
 
     - Ensure 'num_labels' matches the number of distinct labels in your data.  
@@ -52,6 +55,16 @@ The inference notebook accepts the following parameters.
  - **input_df**: The Delta table on which to apply the model (expects 'database.table_name').
  - **feature_col**: The name of the text column that will be input to the model.
  - **output_df**: The Delta table where results will be writen (expects 'database.table_name').
+
+ ### Other resources:
+  - SparkAI Summit presentation: [Building a Pipeline for State-of-the-Art Natural Language Processing Using Hugging Face Tools](https://databricks.com/session_na20/building-a-pipeline-for-state-of-the-art-natural-language-processing-using-hugging-face-tools)  
+   - Huggingface Transformers [documentation](https://huggingface.co/transformers/index.html)  
+
+   - Huggingface Transformers [Quick tour](https://huggingface.co/transformers/quicktour.html)  
+
+   - Workshop: [Managing the Complete Machine Learning Lifecycle with MLflow](https://www.youtube.com/watch?v=x3cxvsUFVZA&t=3038s)  
+
+   - Presentation: [Intro to Delta Lake](https://www.youtube.com/watch?v=a18C8kJfNrE)
 
 
 
