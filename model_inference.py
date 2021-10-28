@@ -38,6 +38,7 @@ client.download_artifacts(run_id,
 
 # COMMAND ----------
 
+from pyspark.sql.types import ArrayType, FloatType
 from helpers import get_run_id
 import mlflow
 
@@ -59,18 +60,20 @@ run_id = get_run_id(model_name, stage=stage)
 
 registered_model = f'runs:/{run_id}/model'
 
-loaded_model = mlflow.pyfunc.spark_udf(spark, model_uri=registered_model)
+loaded_model = mlflow.pyfunc.spark_udf(spark, model_uri=registered_model, result_type=ArrayType(FloatType()))
 
 print(f"This model was fit using the following runtime: {loaded_model.metadata.databricks_runtime}")
 
 df = spark.table(input_df)
 
-predictions = df.withColumn('predictions', loaded_model(feature_col))
+predictions = (df.withColumn('probabilities', loaded_model(feature_col))
+                 .selectExpr(['*', 'array_max(probabilities) as probability'])
+                 .selectExpr(['*', 'array_position(probabilities, probability) - 1 as category']))
 
 # COMMAND ----------
 
 if output_df:
-  spark.write.mode('overwrite').format('delta').saveAsTable(output_df)
+  predictions.write.mode('overwrite').format('delta').saveAsTable(output_df)
 
 else:
   display(predictions)
