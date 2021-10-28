@@ -5,25 +5,6 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import mlflow
 
 
-class TransformerIterableDataset(IterableDataset):
-  def __init__(self, data, tokenizer, feature_col, label_col, max_length):
-    super(TransformerIterableDataset).__init__()
-    self.data = data
-    self.tokenizer = tokenizer
-    self.feature_col = feature_col
-    self.label_col = label_col
-    self.max_length = max_length
-
-  def tokenize_stream(self):
-    for row in self.data:
-      tokenized = self.tokenizer(row[self.feature_col], padding='max_length', truncation=True, max_length=self.max_length)
-      tokenized['label'] = torch.tensor(row[self.label_col])
-      yield  tokenized 
-
-  def __iter__(self):
-    return self.tokenize_stream()
-      
-         
 class TransformerModel(mlflow.pyfunc.PythonModel):
   def __init__(self, tokenizer, model):
     self.tokenizer = AutoTokenizer.from_pretrained(tokenizer)

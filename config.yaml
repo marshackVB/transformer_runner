@@ -7,18 +7,18 @@ model_type: "distilbert-base-uncased"
 experiment_location: "/Shared/transformer_experiments/classification_experiments"
 
 database_name: "default"
-train_table_name: "fake_news_parquet_small_train"
-test_table_name: "fake_news_parquet_small_test"
-feature_col: "title_text"
+train_table_name: "banking77_train"
+test_table_name: "banking77_test"
+feature_col: "text"
 label_col: "label"
-num_labels: 2
+num_labels: 77
 
 streaming_read: True
 
 # If set to -1, truncation will default to the model's maximum length.
-max_token_length: 100 
+max_token_length: 40
 batch_size: 32
-num_train_epochs: 1
+num_train_epochs: 3
 
 save_total_limit: 10
 metric_for_best_model: 'f1'

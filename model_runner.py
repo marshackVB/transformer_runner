@@ -24,7 +24,7 @@ from pyspark.sql.functions import col
 from sklearn.metrics import precision_recall_fscore_support
 import mlflow
 from mlflow.types import ColSpec, DataType, Schema
-from custom_classes import TransformerIterableDataset, TransformerModel
+from custom_classes import TransformerModel
 from helpers import get_config, get_parquet_files, get_or_create_experiment, get_best_metric
 
 # COMMAND ----------
@@ -75,6 +75,7 @@ model = AutoModelForSequenceClassification.from_pretrained(config.model_type, nu
 # COMMAND ----------
 
 if config.streaming_read:
+# https://huggingface.co/docs/datasets/dataset_streaming.html
   
   # Determine max steps
   training_records = spark.table(f'{config.database_name}.{config.train_table_name}').count()
@@ -88,9 +89,12 @@ if config.streaming_read:
   # Since streaming datasets require a "steps" based evaluation strategy, 
   # calculate the eval steps required such that evaluation happens once
   # per epoch.
-  eval_steps_for_epoch = max_steps / config.num_train_epochs
+  eval_steps_for_epoch = math.floor(max_steps / config.num_train_epochs)
   
   
+  # 'train' is the only option when splitting is not done via the
+  # transformers library iteself. This is only a dictionary key so
+  # no worries.
   load_train = load_dataset("parquet", 
                              data_files=train_files, 
                              split='train',
@@ -100,22 +104,41 @@ if config.streaming_read:
                             data_files=test_files, 
                             split='train',
                             streaming=True)
+  
+  def tokenize(text, label):
+    """
+    Tokenizer for streaming read applied to a datasets.IterableDataset.
+    """
+    tokenized = tokenizer(text, 
+                          padding='max_length', 
+                          truncation=True, 
+                          max_length=config.max_token_length)
 
-  train = TransformerIterableDataset(load_train, 
-                                     tokenizer, 
-                                     config.feature_col, 
-                                     config.label_col, 
-                                     config.max_token_length)
+    tokenized['label'] = label
 
-  test = TransformerIterableDataset(load_test, 
-                                    tokenizer, 
-                                    config.feature_col, 
-                                    config.label_col, 
-                                    config.max_token_length)
+    return tokenized
+    
+    
+  f = lambda x: tokenize(x[config.feature_col], x[config.label_col])
+    
+  # See docs regarding mapping a function to a dataset.IterableDataset at
+  # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.IterableDataset
+  train_tokenized = load_train.map(f)
+  test_tokenized = load_test.map(f)
+  
+  # Note that this command is listed a experimental in the documentation... 
+  # https://huggingface.co/docs/datasets/dataset_streaming.html#working-with-numpy-pandas-pytorch-and-tensorflow
+  # The command converts the datasets.IterableDataset object to a torch.utils.data.IterableDataset comprised of torch
+  # tensors. Without this command, it would be necessary to create a class that enherits from torch.utils.data.IterableDataset,
+  # applies the tokenizer, and returns an iterator. An example is available at...
+  # https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset. If this objct convertion is not done, the
+  # training step will through an error
+  train = train_tokenized.with_format("torch")
+  test = test_tokenized.with_format("torch")
   
   train_test = DatasetDict({'train': train,
                             'test': test})
-  
+
 else:
     
   train = load_dataset("parquet", 
@@ -129,12 +152,19 @@ else:
   train_test = DatasetDict({'train': train,
                             'test': test})
   
-  def tokenize(batch, feature_col=config.feature_col):
-    return tokenizer(batch[feature_col], 
+  def tokenize(batch):
+    """
+    Tokenizer for non-streaming read. Additional features are available when using
+    the map function of a dataset.Dataset instead of a dataset.IterableDataset, 
+    therefore different tokenizer functions are used for each case.
+    """
+    return tokenizer(batch[config.feature_col], 
                      padding='max_length', 
                      truncation=True, 
-                     max_length=config.max_length)
+                     max_length=config.max_token_length)
   
+  # See the docs for mapping a function to a DatasetDict at
+  # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.DatasetDict.map
   train_test = train_test.map(tokenize, batched=True, batch_size=config.batch_size) 
   
   train_test.set_format("torch", columns=['input_ids', 'attention_mask', 'label'])
