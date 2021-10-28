@@ -277,7 +277,7 @@ with mlflow.start_run(run_name=config.model_type) as run:
   with mlflow.start_run(run_name = "python_model", nested=True) as child_run:
 
       # Create custom model
-      transformer_model = TransformerModel(tokenizer = '/test_tokenizer', model = '/test_model')
+      transformer_model = TransformerModel(tokenizer= '/test_tokenizer', model= '/test_model', max_token_length= config.max_token_length)
       
       # Create conda environment
       with open('requirements.txt', 'r') as additional_requirements:
@@ -287,15 +287,7 @@ with mlflow.start_run(run_name=config.model_type) as run:
       model_env = mlflow.pyfunc.get_default_conda_env()
       model_env['dependencies'][-1]['pip'] += libraries
       
-      # Create model input and output schemas
-      input_schema = Schema([ColSpec(name=config.feature_col,  type= DataType.string)])
-
-      output_schema = Schema([ColSpec(name=config.feature_col, type= DataType.string),
-                              ColSpec(name='prediction',       type= DataType.double)])
-
-      signature = mlflow.models.ModelSignature(input_schema, output_schema)
-      
-      # Log custom model, signature, and conda environment
-      mlflow.pyfunc.log_model("model", python_model=transformer_model, signature=signature, conda_env=model_env)
+      # Log custom model and conda environment
+      mlflow.pyfunc.log_model("model", python_model=transformer_model, conda_env=model_env)
 
   mlflow.end_run()
