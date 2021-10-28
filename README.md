@@ -19,6 +19,28 @@ test.write.mode('overwrite').format('delta').saveAsTable('default.test')
 
 The Repo can read the tables' underlying parquet files directly, either as a stream using pytorchs' [IterableDataset](https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset) or using the traditional [map-style dataset](https://pytorch.org/docs/stable/data.html#map-style-datasets).  
 
+Don't have a Delta table at your fingertips? Fear not! You can easily create one by loading one of the many datasets available on [Hugging Face Hub!](https://huggingface.co/datasets) Below is an example based on the [banking77](https://huggingface.co/datasets/banking77) dataset that contains customer service questions and their intents.
+
+```python
+from datasets import load_dataset
+
+banking = load_dataset("banking77")
+
+train_pd  = banking['train'].to_pandas()
+test_pd  =  banking['test'].to_pandas()
+
+# Shuffling the data to ensure no ordering is present
+train_pd = train_pd.sample(frac=1).reset_index(drop=True)
+test_pd = test_pd.sample(frac=1).reset_index(drop=True)
+
+train = spark.createDataFrame(train_pd)
+test = spark.createDataFrame(test_pd)
+
+train.write.mode('overwrite').format('delta').saveAsTable('default.banking77_train')
+test.write.mode('overwrite').format('delta').saveAsTable('default.banking77_test')
+```
+
+
 ## Running the Repo on your data  
 #### Steps:    
 1. Ensure that [non-notebook file support](https://docs.databricks.com/repos.html#work-with-non-notebook-files-in-a-databricks-repo) is enable in your Workspace.  
