@@ -13,19 +13,16 @@
 
 import math
 import yaml
-from functools import partial
 from sys import version_info
 import numpy as np
 import torch
-from torch.utils.data import IterableDataset
 from datasets import load_dataset, DatasetDict
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
-from pyspark.sql.functions import col
 from sklearn.metrics import precision_recall_fscore_support
 import mlflow
 from mlflow.types import ColSpec, DataType, Schema
 from custom_classes import TransformerModel
-from helpers import get_config, get_parquet_files, get_or_create_experiment, get_best_metric
+from helpers import get_config, get_parquet_files, get_or_create_experiment, get_best_metrics
 
 # COMMAND ----------
 
@@ -74,6 +71,7 @@ model = AutoModelForSequenceClassification.from_pretrained(config.model_type, nu
 
 # COMMAND ----------
 
+config.streaming_read = True
 if config.streaming_read:
 # https://huggingface.co/docs/datasets/dataset_streaming.html
   
@@ -240,14 +238,9 @@ with mlflow.start_run(run_name=config.model_type) as run:
   # Train model
   trainer.train()
   
-  # Log metrics
-  get_metric = partial(get_best_metric, trainer.state.log_history)
+  best_metrics = get_best_metrics(trainer)
   
-  metrics_to_log = ['eval_f1', 'eval_precision', 'eval_recall', 'train_runtime', 'eval_runtime',
-                    'eval_loss', 'train_loss']
-  
-  for metric in metrics_to_log:
-    mlflow.log_metric(*get_metric(metric))
+  mlflow.log_metrics(best_metrics)
     
   python_version = "{major}.{minor}.{micro}".format(major=version_info.major,
                                                     minor=version_info.minor,

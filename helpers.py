@@ -1,10 +1,12 @@
 import yaml
+import json
 from argparse import Namespace
 from typing import List, Tuple, Dict
 from pyspark.sql import SparkSession
 from pyspark.dbutils import DBUtils
 import mlflow
 from mlflow.tracking import MlflowClient
+from transformers import Trainer
 
 spark = SparkSession.builder.getOrCreate()
 dbutils = DBUtils(spark)
@@ -58,23 +60,42 @@ def get_parquet_files(database:str, table_name:str) -> List[str]:
   return files
 
 
-def get_best_metric(model_state:List[Dict[str, float]], metric:str, n_decimals:int = 4) -> Tuple[str, float]:
+def get_best_metrics(trainer: Trainer) -> Dict[str, float]:
   """
-  Given a metric name, return its value from the best model.
+  Extract metrics from a fitted Trainer instance.
 
-  Args: 
-    model_state: The log history of the best model's state (trainer.state.log_history).
-    metric: The metric of interest.
-    n_decimals: The number of decimals for rounding
-
+  Args:
+    trainer: A Trainer instance that has been trained on data.
+   
   Returns:
-    The metric of interest and its value
+    A dictionary of metrics and their values.
   """
 
-  for train_eval in model_state:
-    for metric_name, value in train_eval.items():
-      if metric_name == metric:
-        return (metric_name, round(value, n_decimals))
+  # Best model metrics
+  best_checkpoint = f'{trainer.state.best_model_checkpoint}/trainer_state.json' 
+
+  with open(best_checkpoint) as f:
+    metrics = json.load(f)
+
+  best_step = metrics['global_step']
+
+  all_log_history = enumerate(metrics['log_history'])
+
+  best_log_idx = [idx for idx, values in all_log_history if values['step'] == best_step][0]
+
+  best_log = metrics['log_history'][best_log_idx]
+  best_log.pop('epoch')
+
+  # Overal runtime metrics
+  runtime_logs_idx = [idx for idx, values in enumerate(trainer.state.log_history) if values.get('train_runtime') is not None][0]
+  runtime_logs = trainer.state.log_history[runtime_logs_idx]
+
+  best_log['train_runtime'] = runtime_logs['train_runtime']
+  best_log['train_loss'] = runtime_logs['train_loss']
+
+
+
+  return best_log
 
       
 def get_or_create_experiment(experiment_location: str) -> None:
