@@ -6,7 +6,6 @@ from pyspark.sql import SparkSession
 from pyspark.dbutils import DBUtils
 import mlflow
 from mlflow.tracking import MlflowClient
-from transformers import Trainer
 
 spark = SparkSession.builder.getOrCreate()
 dbutils = DBUtils(spark)
@@ -60,7 +59,7 @@ def get_parquet_files(database:str, table_name:str) -> List[str]:
   return files
 
 
-def get_best_metrics(trainer: Trainer) -> Dict[str, float]:
+def get_best_metrics(trainer) -> Dict[str, float]:
   """
   Extract metrics from a fitted Trainer instance.
 
