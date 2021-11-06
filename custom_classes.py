@@ -4,31 +4,33 @@ from torch.utils.data import Dataset, IterableDataset
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import mlflow
 
-
+     
 class TransformerModel(mlflow.pyfunc.PythonModel):
   def __init__(self, tokenizer, model, max_token_length):
+    self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     self.tokenizer = AutoTokenizer.from_pretrained(tokenizer)
-    self.model = AutoModelForSequenceClassification.from_pretrained(model)
+    self.model = AutoModelForSequenceClassification.from_pretrained(model).to(self.device)
     self.max_token_length = max_token_length
-
+    
 
   def predict(self, context, model_input):
-    """From docs: model predictions as one of pandas.DataFrame, pandas.Series, numpy.ndarray or list
-    """
+    
+    apply_tokenizer = lambda x: self.tokenizer(str(x), padding='max_length', truncation=True, max_length=self.max_token_length, return_tensors='pt') 
 
-    # Convert model input df to list of inputs
-    feature_col = model_input.columns[0]
-    input_to_lst = model_input[feature_col].to_list()
-    tokenized = self.tokenizer(input_to_lst, padding='max_length', truncation=True, max_length=self.max_token_length)
+    with torch.no_grad():
+      apply_model = lambda x: self.model(x['input_ids'].to(self.device), x['attention_mask'].to(self.device)).logits
 
-    logits = self.model(torch.tensor(tokenized['input_ids']), 
-                        torch.tensor(tokenized['attention_mask'])).logits
+      softmax = torch.nn.Softmax(dim=1)
 
-    softmax = torch.nn.Softmax(dim=1)
-    probs = softmax(logits)
-    probs = probs.detach().numpy()
-    probs = np.around(probs, decimals=4)
+      apply_softmax = lambda x: softmax(x).detach().to('cpu').numpy()
 
-    return probs
+      apply_rounding = lambda x: np.around(x, decimals=4)
+
+      model_input = model_input.iloc[:, 0].apply(apply_tokenizer)
+      model_input = model_input.apply(apply_model)
+      model_input = model_input.apply(apply_softmax)
+      model_input = model_input.apply(apply_rounding)
+    
+    return model_input
       
       
