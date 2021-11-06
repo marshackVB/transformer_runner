@@ -258,29 +258,29 @@ with mlflow.start_run(run_name=config.model_type) as run:
     
   mlflow.log_params(params)
                   
-  # Log artifacts
-  trainer.save_model('/test_model')
-  tokenizer.save_pretrained('/test_tokenizer')
+  # Log artifacts for batch processing
+  trainer.save_model('/huggingface_model')
+  tokenizer.save_pretrained('/huggingface_tokenizer')
 
-  mlflow.log_artifacts('/test_tokenizer', artifact_path='tokenizer')
-  mlflow.log_artifacts('/test_model', artifact_path='model')
+  mlflow.log_artifacts('/huggingface_tokenizer', artifact_path='huggingface_tokenizer')
+  mlflow.log_artifacts('/huggingface_model', artifact_path='huggingface_model')
   mlflow.log_artifact('config.yaml', artifact_path='config')
 
   # Create a sub-run / child run that logs the custom inference class to MLflow
-  with mlflow.start_run(run_name = "python_model", nested=True) as child_run:
+  #with mlflow.start_run(run_name = "python_model", nested=True) as child_run:
 
-      # Create custom model
-      transformer_model = TransformerModel(tokenizer= '/test_tokenizer', model= '/test_model', max_token_length= config.max_token_length)
-      
-      # Create conda environment
-      with open('requirements.txt', 'r') as additional_requirements:
-        libraries = additional_requirements.readlines()
-        libraries = [library.rstrip() for library in libraries]
+  # Create custom model for REST API inference
+  transformer_model = TransformerModel(tokenizer= '/huggingface_tokenizer', 
+                                       model= '/huggingface_model', 
+                                       max_token_length= config.max_token_length)
 
-      model_env = mlflow.pyfunc.get_default_conda_env()
-      model_env['dependencies'][-1]['pip'] += libraries
-      
-      # Log custom model and conda environment
-      mlflow.pyfunc.log_model("model", python_model=transformer_model, conda_env=model_env)
+  # Create conda environment
+  with open('requirements.txt', 'r') as additional_requirements:
+    libraries = additional_requirements.readlines()
+    libraries = [library.rstrip() for library in libraries]
 
-  mlflow.end_run()
+  model_env = mlflow.pyfunc.get_default_conda_env()
+  model_env['dependencies'][-1]['pip'] += libraries
+
+  # Log custom model and conda environment
+  mlflow.pyfunc.log_model("mlflow_model", python_model=transformer_model, conda_env=model_env)

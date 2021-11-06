@@ -92,8 +92,6 @@ def get_best_metrics(trainer) -> Dict[str, float]:
   best_log['train_runtime'] = runtime_logs['train_runtime']
   best_log['train_loss'] = runtime_logs['train_loss']
 
-
-
   return best_log
 
       
@@ -116,6 +114,14 @@ def get_or_create_experiment(experiment_location: str) -> None:
   mlflow.set_experiment(experiment_location)
   
   
+def get_model_info(model_name:str, stage:str):
+  
+  run_info = [run for run in client.search_model_versions(f"name='{model_name}'") 
+                  if run.current_stage == stage][0]
+  
+  return run_info
+  
+
 def get_run_id(model_name:str, stage:str='Production') -> str:
   """Given a model's name, return its run id from the Model Registry; this assumes the model
   has been registered
@@ -129,7 +135,26 @@ def get_run_id(model_name:str, stage:str='Production') -> str:
   
   """
   
-  prod_run = [run for run in client.search_model_versions(f"name='{model_name}'") 
-                  if run.current_stage == stage][0]
+  return get_model_info(model_name, stage).run_id
+
+
+def get_artifact_path(model_name:str, stage:str='Production') -> str:
+  """Given a model's name, return its artifact directory path from the Model Registry; 
+  this assumes the model has been registered
   
-  return prod_run.run_id
+  Args:
+    model_name: The name of the model; this is the name used to registr the model.
+    stage: The stage (version) of the model in the registr you want returned
+    
+  Returns:
+    The artifact directory path
+  
+  """
+  
+  run_info = get_model_info(model_name, stage)
+  
+  artifact_path = get_model_info(model_name, stage).source
+  drop_last_dir = artifact_path.split('/')[:-1]
+  artifact_path = ('/').join(drop_last_dir)
+  
+  return artifact_path
