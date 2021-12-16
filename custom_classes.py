@@ -6,10 +6,10 @@ import mlflow
 
      
 class TransformerModel(mlflow.pyfunc.PythonModel):
-  def __init__(self, tokenizer, model, max_token_length):
+  def __init__(self, model_path, max_token_length):
     self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    self.tokenizer = AutoTokenizer.from_pretrained(tokenizer)
-    self.model = AutoModelForSequenceClassification.from_pretrained(model).to(self.device)
+    self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+    self.model = AutoModelForSequenceClassification.from_pretrained(model_path).to(self.device)
     self.max_token_length = max_token_length
     
 

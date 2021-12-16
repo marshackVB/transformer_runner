@@ -218,7 +218,6 @@ if config.streaming_read:
   training_params['save_steps'] =                    eval_steps_for_epoch
   
   
-  
 training_args = TrainingArguments(**training_params)
 
 trainer = Trainer(model=model,
@@ -259,19 +258,18 @@ with mlflow.start_run(run_name=config.model_type) as run:
   mlflow.log_params(params)
                   
   # Log artifacts for batch processing
-  trainer.save_model('/huggingface_model')
-  tokenizer.save_pretrained('/huggingface_tokenizer')
+  model_dir = '/huggingface_model'
+  trainer.save_model(model_dir)
+  tokenizer.save_pretrained(model_dir)
 
-  mlflow.log_artifacts('/huggingface_tokenizer', artifact_path='huggingface_tokenizer')
-  mlflow.log_artifacts('/huggingface_model', artifact_path='huggingface_model')
-  mlflow.log_artifact('config.yaml', artifact_path='config')
+  mlflow.log_artifacts(driver_dir, artifact_path='huggingface_model')
+  mlflow.log_artifact('config.yaml')
 
   # Create a sub-run / child run that logs the custom inference class to MLflow
   #with mlflow.start_run(run_name = "python_model", nested=True) as child_run:
 
   # Create custom model for REST API inference
-  transformer_model = TransformerModel(tokenizer= '/huggingface_tokenizer', 
-                                       model= '/huggingface_model', 
+  transformer_model = TransformerModel(model_path= '/huggingface_model', 
                                        max_token_length= config.max_token_length)
 
   # Create conda environment
