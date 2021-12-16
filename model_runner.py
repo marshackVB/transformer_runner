@@ -262,7 +262,7 @@ with mlflow.start_run(run_name=config.model_type) as run:
   trainer.save_model(model_dir)
   tokenizer.save_pretrained(model_dir)
 
-  mlflow.log_artifacts(driver_dir, artifact_path='huggingface_model')
+  mlflow.log_artifacts(model_dir, artifact_path='huggingface_model')
   mlflow.log_artifact('config.yaml')
 
   # Create a sub-run / child run that logs the custom inference class to MLflow
