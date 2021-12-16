@@ -78,16 +78,16 @@ run_id = get_run_id(model_name, stage)
 client = MlflowClient()
 
 # Copy artifacts to driver
-client.download_artifacts(run_id=run_id, path="config", dst_path='/')
-client.download_artifacts(run_id=run_id, path="huggingface_tokenizer", dst_path='/')
+client.download_artifacts(run_id=run_id, path="./", dst_path='/')
 client.download_artifacts(run_id=run_id, path="huggingface_model", dst_path='/')
 
 # Load models
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-config = get_config('/config/config.yaml')
-tokenizer = AutoTokenizer.from_pretrained('/huggingface_tokenizer')
-model = AutoModelForSequenceClassification.from_pretrained('/huggingface_model').to(device)
+config = get_config('/config.yaml')
+model_dir = '/huggingface_model'
+tokenizer = AutoTokenizer.from_pretrained(model_dir)
+model = AutoModelForSequenceClassification.from_pretrained(model_dir).to(device)
 
 # COMMAND ----------
 

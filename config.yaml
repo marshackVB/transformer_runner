@@ -2,7 +2,7 @@
 # See https://huggingface.co/transformers/pretrained_models.html for a list of available models
 # Most of the below parameters are explained in the docs here, https://huggingface.co/transformers/main_classes/trainer.html#trainingarguments
 
-model_type: "distilbert-base-uncased"
+model_type: "distilbert-base-uncase"
 
 experiment_location: "/Shared/transformer_experiments/classification_experiments"
 
