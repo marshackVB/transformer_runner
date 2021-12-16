@@ -11,6 +11,7 @@
 
 # COMMAND ----------
 
+import os
 import math
 import yaml
 from sys import version_info
@@ -262,14 +263,19 @@ with mlflow.start_run(run_name=config.model_type) as run:
   trainer.save_model(model_dir)
   tokenizer.save_pretrained(model_dir)
 
-  mlflow.log_artifacts(driver_dir, artifact_path='huggingface_model')
+  mlflow.log_artifacts(model_dir, artifact_path='huggingface_model')
   mlflow.log_artifact('config.yaml')
 
   # Create a sub-run / child run that logs the custom inference class to MLflow
   #with mlflow.start_run(run_name = "python_model", nested=True) as child_run:
 
   # Create custom model for REST API inference
-  transformer_model = TransformerModel(model_path= '/huggingface_model', 
+  # The model must be copied to the CPU if the custom pytfunc model will served via REST API, otherwise
+  # an error will be thrown when attempting to served because required CUDA dependencies are not installed
+  # on the serving cluster.
+  cpu_model = AutoModelForSequenceClassification.from_pretrained(model_dir).to('cpu')
+  transformer_model = TransformerModel(tokenizer = tokenizer,
+                                       model = cpu_model,
                                        max_token_length= config.max_token_length)
 
   # Create conda environment
@@ -280,5 +286,12 @@ with mlflow.start_run(run_name=config.model_type) as run:
   model_env = mlflow.pyfunc.get_default_conda_env()
   model_env['dependencies'][-1]['pip'] += libraries
 
-  # Log custom model and conda environment
-  mlflow.pyfunc.log_model("mlflow_model", python_model=transformer_model, conda_env=model_env)
+  input_example = (spark.table(f'{config.database_name}.{config.train_table_name}')
+                      .select(config.feature_col)
+                      .limit(5)).toPandas()
+  
+  mlflow.pyfunc.log_model("mlflow_model", 
+                          python_model=transformer_model, 
+                          conda_env=model_env,
+                          code_path=[os.path.abspath('custom_pyfuncs.py')],
+                          input_example=input_example)
