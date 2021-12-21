@@ -22,7 +22,8 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trai
 from sklearn.metrics import precision_recall_fscore_support
 import mlflow
 from mlflow.types import ColSpec, DataType, Schema
-from custom_classes import TransformerModel
+from pyspark.sql.types import StructType, StructField, ArrayType, FloatType, DoubleType, StringType
+from custom_pyfuncs import TransformerModel
 from helpers import get_config, get_parquet_files, get_or_create_experiment, get_best_metrics
 
 # COMMAND ----------
@@ -40,7 +41,7 @@ config.max_token_length = None if config.max_token_length == -1 else config.max_
 
 # COMMAND ----------
 
-# MAGIC %md Configure MLflow tracking servier location
+# MAGIC %md Configure MLflow tracking server location
 
 # COMMAND ----------
 

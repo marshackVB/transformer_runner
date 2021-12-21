@@ -18,7 +18,7 @@ streaming_read: True
 # If set to -1, truncation will default to the model's maximum length.
 max_token_length: 40
 batch_size: 64
-num_train_epochs: 3
+num_train_epochs: 10
 
 save_total_limit: 10
 metric_for_best_model: 'f1'
