@@ -67,7 +67,7 @@ test.write.mode('overwrite').format('delta').saveAsTable('default.banking77_test
 
 Each time you run the model_runner notebook, a new entry will be logged to the tracking server, giving you the ability to try different model types and parameters and compare performance across runs. You can also schedule the model_runner notebook to run as a job for concurrent runs - just create an additional yaml file for each run. When you create the job, add a Parameter called 'config_file' pointing to the correct yaml file for your run.  
 
-<img src="img/tracking_server.png" alt="Mlflow tracking server runs" style="height: 300px; width:700px;"/> 
+<img src="img/tracking_server.png" alt="Mlflow tracking server runs" style="height: 400px; width:900px;"/> 
 
 ## Performing inference  
 
@@ -95,15 +95,15 @@ The inference notebook accepts the following parameters, which govern how infere
  - **df_repartition_num**: If setting batch_inference = 'False', set this number to equal your cluster's CPU core count. This will maximize parrallelism during model inference.
 
 Model results are logged to an MLflow tracking server, allowing for easy comparisons. Both huggingface tokenizer and model artifacts as well as a custom MLflow model for Pyspark/Reast API deployment are saved as artifacts.  
-<img src="img/artifacts.png" alt="Mlflow tracking server artifacts" style="height: 300px; width:200px;"/> 
+<img src="img/artifacts.png" alt="Mlflow tracking server artifacts" style="height: 500px; width:350px;"/> 
 
 To register a run to the Model Registry, click on the mlflow_model and select choose "Register Model".  
-<img src="img/register_model.png" alt="Register MLflow model" style="height: 225px; width:700px;"/>
+<img src="img/register_model.png" alt="Register MLflow model" style="height: 300px; width:900px;"/>
 
 Once a model version is registered, it can be moved into different Model Registry stages (Staging, Production, Archived). The inference notebook will then retrieve the model associated with the stage specified by the notebook parameter.
 
 Deploying the model as a Rest API is done from the Model Registry iteself by choosing 'Use model for inference' then 'Real-time' and 'Enable Serving'.  
-<img src="img/rest_api.png" alt="Register MLflow model" style="height: 300px; width:550px;"/>
+<img src="img/rest_api.png" alt="Register MLflow model" style="height: 450px; width:900px;"/>
 
 
  ## Scheduling jobs
@@ -122,7 +122,7 @@ Deploying the model as a Rest API is done from the Model Registry iteself by cho
  }
  ```
 
- <img src="img/job_config.png" alt="Configure notebook job" style="height: 400px; width:375px;"/>
+ <img src="img/job_config.png" alt="Configure notebook job" style="height: 500px; width:475px;"/>
 
 
 By setting difference parameters, you can test the speed / cost of different notebook inference methods, such as single VM with CPU, single VM with GPU, and cluster of VMs with CPU.
