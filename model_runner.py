@@ -11,21 +11,20 @@
 
 # COMMAND ----------
 
+import os
 import math
 import yaml
-from functools import partial
 from sys import version_info
 import numpy as np
 import torch
-from torch.utils.data import IterableDataset
 from datasets import load_dataset, DatasetDict
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
-from pyspark.sql.functions import col
 from sklearn.metrics import precision_recall_fscore_support
 import mlflow
 from mlflow.types import ColSpec, DataType, Schema
-from custom_classes import TransformerModel
-from helpers import get_config, get_parquet_files, get_or_create_experiment, get_best_metric
+from pyspark.sql.types import StructType, StructField, ArrayType, FloatType, DoubleType, StringType
+from custom_pyfuncs import TransformerModel
+from helpers import get_config, get_parquet_files, get_or_create_experiment, get_best_metrics
 
 # COMMAND ----------
 
@@ -42,7 +41,7 @@ config.max_token_length = None if config.max_token_length == -1 else config.max_
 
 # COMMAND ----------
 
-# MAGIC %md Configure MLflow tracking servier location
+# MAGIC %md Configure MLflow tracking server location
 
 # COMMAND ----------
 
@@ -74,6 +73,7 @@ model = AutoModelForSequenceClassification.from_pretrained(config.model_type, nu
 
 # COMMAND ----------
 
+config.streaming_read = True
 if config.streaming_read:
 # https://huggingface.co/docs/datasets/dataset_streaming.html
   
@@ -220,7 +220,6 @@ if config.streaming_read:
   training_params['save_steps'] =                    eval_steps_for_epoch
   
   
-  
 training_args = TrainingArguments(**training_params)
 
 trainer = Trainer(model=model,
@@ -240,14 +239,9 @@ with mlflow.start_run(run_name=config.model_type) as run:
   # Train model
   trainer.train()
   
-  # Log metrics
-  get_metric = partial(get_best_metric, trainer.state.log_history)
+  best_metrics = get_best_metrics(trainer)
   
-  metrics_to_log = ['eval_f1', 'eval_precision', 'eval_recall', 'train_runtime', 'eval_runtime',
-                    'eval_loss', 'train_loss']
-  
-  for metric in metrics_to_log:
-    mlflow.log_metric(*get_metric(metric))
+  mlflow.log_metrics(best_metrics)
     
   python_version = "{major}.{minor}.{micro}".format(major=version_info.major,
                                                     minor=version_info.minor,
@@ -265,37 +259,40 @@ with mlflow.start_run(run_name=config.model_type) as run:
     
   mlflow.log_params(params)
                   
-  # Log artifacts
-  trainer.save_model('/test_model')
-  tokenizer.save_pretrained('/test_tokenizer')
+  # Log artifacts for batch processing
+  model_dir = '/huggingface_model'
+  trainer.save_model(model_dir)
+  tokenizer.save_pretrained(model_dir)
 
-  mlflow.log_artifacts('/test_tokenizer', artifact_path='tokenizer')
-  mlflow.log_artifacts('/test_model', artifact_path='model')
-  mlflow.log_artifact('config.yaml', artifact_path='config')
+  mlflow.log_artifacts(model_dir, artifact_path='huggingface_model')
+  mlflow.log_artifact('config.yaml')
 
   # Create a sub-run / child run that logs the custom inference class to MLflow
-  with mlflow.start_run(run_name = "python_model", nested=True) as child_run:
+  #with mlflow.start_run(run_name = "python_model", nested=True) as child_run:
 
-      # Create custom model
-      transformer_model = TransformerModel(tokenizer = '/test_tokenizer', model = '/test_model')
-      
-      # Create conda environment
-      with open('requirements.txt', 'r') as additional_requirements:
-        libraries = additional_requirements.readlines()
-        libraries = [library.rstrip() for library in libraries]
+  # Create custom model for REST API inference
+  # The model must be copied to the CPU if the custom pytfunc model will served via REST API, otherwise
+  # an error will be thrown when attempting to served because required CUDA dependencies are not installed
+  # on the serving cluster.
+  cpu_model = AutoModelForSequenceClassification.from_pretrained(model_dir).to('cpu')
+  transformer_model = TransformerModel(tokenizer = tokenizer,
+                                       model = cpu_model,
+                                       max_token_length= config.max_token_length)
 
-      model_env = mlflow.pyfunc.get_default_conda_env()
-      model_env['dependencies'][-1]['pip'] += libraries
-      
-      # Create model input and output schemas
-      input_schema = Schema([ColSpec(name=config.feature_col,  type= DataType.string)])
+  # Create conda environment
+  with open('requirements.txt', 'r') as additional_requirements:
+    libraries = additional_requirements.readlines()
+    libraries = [library.rstrip() for library in libraries]
 
-      output_schema = Schema([ColSpec(name=config.feature_col, type= DataType.string),
-                              ColSpec(name='prediction',       type= DataType.double)])
+  model_env = mlflow.pyfunc.get_default_conda_env()
+  model_env['dependencies'][-1]['pip'] += libraries
 
-      signature = mlflow.models.ModelSignature(input_schema, output_schema)
-      
-      # Log custom model, signature, and conda environment
-      mlflow.pyfunc.log_model("model", python_model=transformer_model, signature=signature, conda_env=model_env)
-
-  mlflow.end_run()
+  input_example = (spark.table(f'{config.database_name}.{config.train_table_name}')
+                      .select(config.feature_col)
+                      .limit(5)).toPandas()
+  
+  mlflow.pyfunc.log_model("mlflow_model", 
+                          python_model=transformer_model, 
+                          conda_env=model_env,
+                          code_path=[os.path.abspath('custom_pyfuncs.py')],
+                          input_example=input_example)
