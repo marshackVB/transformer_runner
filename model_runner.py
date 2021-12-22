@@ -73,7 +73,6 @@ model = AutoModelForSequenceClassification.from_pretrained(config.model_type, nu
 
 # COMMAND ----------
 
-config.streaming_read = True
 if config.streaming_read:
 # https://huggingface.co/docs/datasets/dataset_streaming.html
   
@@ -267,10 +266,7 @@ with mlflow.start_run(run_name=config.model_type) as run:
   mlflow.log_artifacts(model_dir, artifact_path='huggingface_model')
   mlflow.log_artifact('config.yaml')
 
-  # Create a sub-run / child run that logs the custom inference class to MLflow
-  #with mlflow.start_run(run_name = "python_model", nested=True) as child_run:
-
-  # Create custom model for REST API inference
+  # Create custom model for REST API inference or Spark UDF inference
   # The model must be copied to the CPU if the custom pytfunc model will served via REST API, otherwise
   # an error will be thrown when attempting to served because required CUDA dependencies are not installed
   # on the serving cluster.
